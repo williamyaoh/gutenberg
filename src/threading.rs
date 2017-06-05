@@ -2,10 +2,9 @@ use crossbeam::{self, sync};
 
 use std::thread;
 use std::sync::mpsc;
-use std::mem;
 
-enum Message {
-    Job(Box<FnBox + Send>),
+enum Message<'a> {
+    Job(Box<FnBox + 'a + Send>),
     NoMoreJobs
 }
 
@@ -20,26 +19,25 @@ impl<F: FnOnce()> FnBox for F {
     }
 }
 
-type WorkQueue = sync::MsQueue<mpsc::SyncSender<Message>>;
+type WorkQueue<'a> = sync::MsQueue<mpsc::SyncSender<Message<'a>>>;
 
-pub struct Scope {
-    available: WorkQueue,
+pub struct Scope<'a> {
+    available: WorkQueue<'a>,
     handles: Vec<thread::JoinHandle<()>>
 }
 
-impl Scope {
-    fn spawn<'a, F>(&'a self, f: F) where
+impl<'a> Scope<'a> {
+    pub fn spawn<F>(&self, f: F) where
         F: FnOnce() + 'a + Send
     {
         let worker = self.available.pop();
         let fnbox: Box<FnBox + 'a + Send> = Box::new(f);
-        let fnbox: Box<FnBox + Send> = unsafe { mem::transmute(fnbox) };
         worker.send(Message::Job(fnbox))
             .unwrap();
     }
 }
 
-fn worker(workqueue: &WorkQueue) {
+fn worker<'a>(workqueue: &WorkQueue<'a>) {
     let (send, receive) = mpsc::sync_channel(0);
     loop {
         workqueue.push(send.clone());
@@ -53,8 +51,8 @@ fn worker(workqueue: &WorkQueue) {
     }
 }
 
-pub fn scoped_pool<F, R>(threads: usize, f: F) -> R where
-    F: FnOnce(&Scope) -> R
+pub fn scoped_pool<'a, F, R>(threads: usize, f: F) -> R where
+    F: FnOnce(&Scope<'a>) -> R
 {
     let mut scope = Scope { 
         available: sync::MsQueue::new(),
