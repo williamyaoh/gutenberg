@@ -12,7 +12,7 @@ use fs::{create_file, create_directory, ensure_directory_exists};
 use content::{Page, Section, Paginator, SortBy, Taxonomy, populate_previous_and_next_pages, sort_pages};
 use templates::{GUTENBERG_TERA, global_fns, render_redirect_template};
 use front_matter::InsertAnchor;
-
+use threading;
 
 #[derive(Debug)]
 pub struct Site {
@@ -118,14 +118,27 @@ impl Site {
             pages_insert_anchors.insert(page.file.path.clone(), self.find_parent_section_insert_anchor(&page.file.parent.clone()));
         }
 
-        // TODO: make that parallel
-        for page in self.pages.values_mut() {
-            let insert_anchor = pages_insert_anchors[&page.file.path];
-            page.render_markdown(&self.permalinks, &self.tera, &self.config, insert_anchor)?;
-        }
-        // TODO: make that parallel
-        for section in self.sections.values_mut() {
-            section.render_markdown(&self.permalinks, &self.tera, &self.config)?;
+        {
+            // Local variables so that we're not borrowing &self in other threads
+            let permalinks = &self.permalinks;
+            let tera = &self.tera;
+            let config = &self.config;
+
+            let pages = self.pages.values_mut();
+            let sections = self.sections.values_mut();
+
+            threading::scoped_pool(4, |scope| {
+                for page in pages {
+                    let insert_anchor = pages_insert_anchors[&page.file.path];
+                    scope.spawn(move || page.render_markdown(permalinks, tera, config, insert_anchor)
+                        .unwrap());
+                }
+                
+                for section in sections {
+                    scope.spawn(move || section.render_markdown(permalinks, tera, config)
+                        .unwrap());
+                }
+            });
         }
 
         self.populate_sections();
