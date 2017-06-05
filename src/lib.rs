@@ -16,12 +16,14 @@ extern crate syntect;
 extern crate slug;
 extern crate chrono;
 extern crate base64;
+extern crate crossbeam;
 #[cfg(test)]
 extern crate tempdir;
 
 mod fs;
 mod config;
 pub mod errors;
+mod threading;
 mod front_matter;
 mod content;
 mod site;
