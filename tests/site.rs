@@ -189,8 +189,11 @@ fn can_build_site_with_categories() {
         } else {
             Some("B".to_string())
         };
+        println!("{} - {:?}", i, page.file.path);
+        println!("{:?}", page.meta.category);
     }
     site.populate_tags_and_categories();
+    println!("{:?}", site.categories);
     let tmp_dir = TempDir::new("example").expect("create temp dir");
     let public = &tmp_dir.path().join("public");
     site.set_output_path(&public);
